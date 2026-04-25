@@ -112,3 +112,35 @@ PC側のProcessingアプリが以下の順で音声を生成します。
 ## チーム
 
 Hackathon Team 5
+
+---
+
+## ディレクトリ構成
+
+```
+Hackathon_team5/
+├── README.md
+├── .gitignore
+├── arduino/
+│   ├── server/                     # サーバーArduino（BPM管理・SPI Master・シリアル通信）
+│   │   └── server.ino
+│   ├── instrument_melody/          # メロディ楽器Arduino x3（圧力センサ・SPI Slave）
+│   │   └── instrument_melody.ino
+│   └── instrument_rhythm/          # リズム楽器Arduino x1（圧力センサ・SPI Slave）
+│       └── instrument_rhythm.ino
+├── processing/
+│   └── orchestra/                  # PC側音声生成アプリ（加算合成・ADSR・エフェクト）
+│       └── orchestra.pde
+└── docs/
+    ├── circuit/                    # 回路図・配線図
+    └── design/                     # 設計資料
+```
+
+| パス | 説明 |
+|------|------|
+| `arduino/server/` | サーバーArduino のスケッチ。BPMクロック管理、楽曲データ（PROGMEM）、SPI Master、マイク入力による拍手検出、シリアル送信を担当 |
+| `arduino/instrument_melody/` | メロディ楽器Arduino（3台共通）のスケッチ。圧力センサ入力・SoundData を SPI Slave として送信 |
+| `arduino/instrument_rhythm/` | リズム楽器Arduino（1台）のスケッチ。圧力センサ入力・SoundData を SPI Slave として送信 |
+| `processing/orchestra/` | PC側 Processing アプリ。シリアルポートから SoundData を受信し、加算合成・エンベロープ（ADSR）・ビブラート・リバーブを適用して音声出力 |
+| `docs/circuit/` | 回路図・ピン配線図 |
+| `docs/design/` | 設計資料・議事録・仕様書 |
