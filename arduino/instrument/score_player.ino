@@ -2,7 +2,7 @@
 #include "score_data.h"
 #include <avr/pgmspace.h>
 
-//この辺は後で譜面をもらって変更する
+//楽譜作る必要あり．
 const NoteEvent score_part_0[] PROGMEM = {
     {0, 8, 60, 100}, {16, 24, 64, 100}, {32, 40, 67, 100}, {48, 56, 72, 100}
 };

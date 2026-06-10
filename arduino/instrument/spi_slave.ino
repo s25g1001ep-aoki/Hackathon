@@ -3,11 +3,20 @@
 
 const int SS_PIN = 10;
 
-enum ControlCommand {
+// マスター側と完全に一致させるための列挙型・構造体定義
+enum ControlCommand : uint8_t {
     CMD_PLAY = 0x01,
     CMD_STOP = 0x02,
     CMD_ENTRY_CUE = 0x03,
     CMD_BPM_UPDATE = 0x04
+};
+
+// マスター側の InstrumentStatus の構造に合わせる（想定される配置の例）
+struct InstrumentStatus {
+    uint8_t instrument_id;
+    uint8_t frog_state;
+    uint8_t last_sequence;
+    uint8_t ack_status;
 };
 
 extern volatile bool is_playing;
@@ -17,21 +26,19 @@ extern void score_init(uint8_t instrument_id);
 extern void score_stop_all();
 extern uint8_t get_instrument_id();
 
-volatile uint8_t spi_rx_buffer[5];
-volatile uint8_t spi_tx_buffer[5];
+// 送受信バッファをマスターのサイズに合わせる
+volatile uint8_t spi_rx_buffer[sizeof(ControlCommand)];
+volatile InstrumentStatus spi_tx_buffer;
 volatile uint8_t spi_index = 0;
 volatile uint8_t last_sequence = 0;
 volatile uint8_t ack_status = 0x01; // 0x01: OK, 0x00: NG
 
 void prepare_tx_buffer() {
-    spi_tx_buffer[0] = get_instrument_id();
-    spi_tx_buffer[1] = frog_state;
-    spi_tx_buffer[2] = last_sequence;
-    spi_tx_buffer[3] = ack_status;
-    
-    // 2の補数チェックサム付与
-    uint8_t sum = spi_tx_buffer[0] + spi_tx_buffer[1] + spi_tx_buffer[2] + spi_tx_buffer[3];
-    spi_tx_buffer[4] = (~sum + 1) & 0xFF;
+    // マスターの InstrumentStatus 構造体の並び順にそのまま代入
+    spi_tx_buffer.instrument_id = get_instrument_id();
+    spi_tx_buffer.frog_state    = frog_state;
+    spi_tx_buffer.last_sequence = last_sequence;
+    spi_tx_buffer.ack_status    = ack_status;
 }
 
 void init_spi_slave() {
@@ -41,52 +48,64 @@ void init_spi_slave() {
     pinMode(SS_PIN, INPUT);
 
     prepare_tx_buffer();
-    SPDR = spi_tx_buffer[0];
+    // 最初の1バイト（instrument_id）をSPDRに仕込んでおく
+    SPDR = ((uint8_t*)&spi_tx_buffer)[0];
 
     SPCR |= _BV(SPE);
     SPCR |= _BV(SPIE);
 }
 
 ISR(SPI_STC_vect) {
-    spi_rx_buffer[spi_index] = SPDR;
+    uint8_t rx_byte = SPDR;
+
+    // バッファオーバーフロー防止
+    if (spi_index < sizeof(ControlCommand)) {
+        spi_rx_buffer[spi_index] = rx_byte;
+    }
     spi_index++;
 
-    if (spi_index < 5) {
-        SPDR = spi_tx_buffer[spi_index];
-    } else {
-        // 5バイト受信完了時に解析
-        uint8_t sum = 0;
-        for (int i = 0; i < 5; i++) {
-            sum += spi_rx_buffer[i];
+    // マスターからの期待バイト数（ControlCommandのサイズ）に達したか確認
+    if (spi_index >= sizeof(ControlCommand)) {
+        
+        // --- データ解析と処理 ---
+        // マスターが単一バイトのenum、または最初のバイトにコマンドを入れていると仮定
+        uint8_t command = spi_rx_buffer[0]; 
+        
+        // 必要に応じてマスター側からシーケンス番号を受け取る場合はここで処理
+        // last_sequence = spi_rx_buffer[1]; // 例
+
+        ack_status = 0x01; // 正常受信
+
+        switch (command) {
+            case CMD_PLAY:
+                is_playing = true;
+                break;
+            case CMD_STOP:
+                is_playing = false;
+                score_stop_all();
+                break;
+            case CMD_ENTRY_CUE:
+                local_tick = 0;
+                score_init(get_instrument_id());
+                is_playing = true;
+                break;
+            case CMD_BPM_UPDATE:
+                break;
+            default:
+                ack_status = 0x00; // 未定義コマンド
+                break;
         }
 
-        if ((sum & 0xFF) == 0) { // チェックサム正常
-            uint8_t command = spi_rx_buffer[0];
-            last_sequence = spi_rx_buffer[3];
-            ack_status = 0x01;
-
-            switch (command) {
-                case CMD_PLAY:
-                    is_playing = true;
-                    break;
-                case CMD_STOP:
-                    is_playing = false;
-                    score_stop_all();
-                    break;
-                case CMD_ENTRY_CUE:
-                    local_tick = 0;
-                    score_init(get_instrument_id());
-                    is_playing = true;
-                    break;
-                case CMD_BPM_UPDATE:
-                    break;
-            }
-        } else {
-            ack_status = 0x00; // エラー報告
-        }
-
+        // 次回のトランザクション（SPI通信）に向けた送信データの更新
         prepare_tx_buffer();
         spi_index = 0;
-        SPDR = spi_tx_buffer[0]; // 次のトランザクションに向けて準備
+        SPDR = ((uint8_t*)&spi_tx_buffer)[0]; // 次の最初の1バイトを準備
+    } else {
+        // 次のバイトをSPDRに仕込む（InstrumentStatusの次のバイト）
+        if (spi_index < sizeof(InstrumentStatus)) {
+            SPDR = ((uint8_t*)&spi_tx_buffer)[spi_index];
+        } else {
+            SPDR = 0x00; // 送信データが足りない場合のダミー
+        }
     }
 }
