@@ -1,3 +1,5 @@
+//#include <SPI.h>
+
 // main.ino
 #include "score_data.h"
 
@@ -15,7 +17,7 @@ extern void pressure_init();
 extern uint8_t pressure_read();
 
 extern void score_step(uint16_t local_tick);
-extern void score_loop_check(uint16_t &local_tick);
+extern void score_loop_check(volatile uint16_t &local_tick);
 extern void score_stop_all();
 
 void setup() {

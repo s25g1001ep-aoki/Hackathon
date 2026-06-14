@@ -3,7 +3,7 @@
 
 const int SYNC_PIN = 2;
 
-volatile uint16_t local_tick = 0;
+//volatile uint16_t local_tick;
 extern volatile bool is_playing;
 
 void sync_init() {

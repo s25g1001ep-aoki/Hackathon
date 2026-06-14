@@ -94,7 +94,7 @@ const NoteEvent score_part_1[] PROGMEM = {
 };
 
 // 1拍＝2ティック、全64ティックの「カエルの歌」
-const NoteEvent score_part_1[] PROGMEM = {
+const NoteEvent score_part_2[] PROGMEM = {
     // 【1〜4小節】かえるのうたが きこえてくるよ (4分音符 × 12 + 2拍休み)
     {0,  2,  60, 100}, // ド
     {2,  4,  62, 100}, // レ
@@ -143,6 +143,8 @@ const NoteEvent score_part_3[] PROGMEM = {
     //ここに記述
 };
 
+const uint8_t score_lengths[4] = {29, 29, 29, 0};
+
 const NoteEvent* my_score = NULL;
 uint8_t my_score_length = 0;
 bool note_active[16] = {false};
@@ -186,7 +188,7 @@ void score_step(uint16_t local_tick) {
     }
 }
 
-void score_loop_check(uint16_t &local_tick) {
+void score_loop_check(volatile uint16_t &local_tick) {
     if (local_tick >= LOOP_MAX_TICK) {
         noInterrupts();
         local_tick = 0;
