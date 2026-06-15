@@ -2,6 +2,10 @@
 #include "score_data.h"
 #include <avr/pgmspace.h>
 
+#define DRUM_KICK  36
+#define DRUM_SNARE 38
+#define DRUM_HH    42
+
 //楽譜作る必要あり．
 // 1拍＝2ティック、全64ティックの「カエルの歌」
 const NoteEvent score_part_0[] PROGMEM = {
@@ -140,10 +144,33 @@ const NoteEvent score_part_2[] PROGMEM = {
 
 // リズムの譜面をここに入れる．一つはリズムに使う．
 const NoteEvent score_part_3[] PROGMEM = {
-    //ここに記述
+    //ここに記述（書いてあるのはまだ曲に合ってないから後で調整する）
+    //1〜16ティック（1小節目）
+    {0,  1,  DRUM_KICK,  110}, {0,  1,  DRUM_HH,    90},
+    {4,  5,  DRUM_HH,    80},
+    {8,  9,  DRUM_SNARE, 100}, {8,  9,  DRUM_HH,    90},
+    {12, 13, DRUM_HH,    80},
+    
+    //17〜32ティック（2小節目）
+    {16, 17, DRUM_KICK,  110}, {16, 17, DRUM_HH,    90},
+    {20, 21, DRUM_HH,    80},
+    {24, 25, DRUM_SNARE, 100}, {24, 25, DRUM_HH,    90},
+    {28, 29, DRUM_HH,    80},
+
+    //33〜48ティック（3小節目の例）
+    {32, 33, DRUM_KICK,  110}, {32, 33, DRUM_HH,    90},
+    {36, 37, DRUM_HH,    80},
+    {40, 41, DRUM_SNARE, 100}, {40, 41, DRUM_HH,    90},
+    {44, 45, DRUM_HH,    80},
+
+    //49〜64ティック（4小節目）
+    {48, 49, DRUM_KICK,  110}, {48, 49, DRUM_HH,    90},
+    {52, 53, DRUM_HH,    80},
+    {56, 57, DRUM_SNARE, 100}, {56, 57, DRUM_HH,    90},
+    {60, 61, DRUM_HH,    80}
 };
 
-const uint8_t score_lengths[4] = {29, 29, 29, 0};
+const uint8_t score_lengths[4] = {29, 29, 29, 20};
 
 const NoteEvent* my_score = NULL;
 uint8_t my_score_length = 0;
