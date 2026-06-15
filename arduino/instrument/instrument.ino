@@ -15,8 +15,9 @@ extern void init_spi_slave();
 extern void sync_init();
 extern void pressure_init();
 extern uint8_t pressure_read();
+extern int8_t pressure_get_pitch_offset();  // 【追加】
 
-extern void score_step(uint16_t local_tick);
+extern void score_step(uint16_t local_tick, int8_t pitch_offset); //引数追加
 extern void score_loop_check(volatile uint16_t &local_tick);
 extern void score_stop_all();
 
@@ -38,7 +39,8 @@ void loop() {
         uint16_t current_tick = local_tick;
         interrupts();
 
-        score_step(current_tick);
+        int8_t pitch_offset = pressure_get_pitch_offset(); //追加
+        score_step(current_tick, pitch_offset); //変更
         score_loop_check(local_tick);
     }
 }

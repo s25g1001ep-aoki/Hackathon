@@ -169,7 +169,7 @@ void score_init(uint8_t instrument_id) {
     }
 }
 
-void score_step(uint16_t local_tick) {
+void score_step(uint16_t local_tick, int8_t pitch_offset) {  //引数追加
     if (my_score == NULL) return;
 
     for (uint8_t i = 0; i < my_score_length; i++) {
@@ -177,6 +177,11 @@ void score_step(uint16_t local_tick) {
         uint16_t end_t = pgm_read_word(&(my_score[i].end_tick));
         uint8_t pitch = pgm_read_byte(&(my_score[i].pitch));
         uint8_t velocity = pgm_read_byte(&(my_score[i].velocity));
+
+        //追加部：オフセットを加算（0〜127の範囲にクランプ）
+        int16_t shifted_pitch = (int16_t)pitch + pitch_offset;
+        if (shifted_pitch < 0)   shifted_pitch = 0;
+        if (shifted_pitch > 127) shifted_pitch = 127;
 
         if (local_tick == start_t && !note_active[i]) {
             serial_tx_note_on(pitch, velocity);
