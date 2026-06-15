@@ -147,7 +147,9 @@ const uint8_t score_lengths[4] = {29, 29, 29, 0};
 
 const NoteEvent* my_score = NULL;
 uint8_t my_score_length = 0;
-bool note_active[16] = {false};
+
+static const uint8_t MAX_NOTES = 29;
+bool note_active[MAX_NOTES] = {false};
 
 extern void serial_tx_note_on(uint8_t pitch, uint8_t velocity);
 extern void serial_tx_note_off(uint8_t pitch);
@@ -162,7 +164,7 @@ void score_init(uint8_t instrument_id) {
     }
     my_score_length = score_lengths[instrument_id];
 
-    for (uint8_t i = 0; i < 16; i++) {
+    for (uint8_t i = 0; i < my_score_length; i++) {
         note_active[i] = false;
     }
 }
