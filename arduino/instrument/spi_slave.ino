@@ -4,7 +4,7 @@
 // 【配線の変更点】
 // マスター側のCS(SS)ピンを、UNO R4（スレーブ）の「2番ピン（または3番ピン）」に接続してください。
 // MOSIピンは通常通り11番ピン（または任意のデジタルピン）に接続します。
-const int SLAVE_CS_PIN = 2;  
+const int SLAVE_CS_PIN = 10;  
 const int SLAVE_MOSI_PIN = 11;
 
 enum ControlCommand : uint8_t {
