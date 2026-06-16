@@ -3,7 +3,7 @@
 const int PRESSURE_SENSOR_PIN = A0;
 
 //乗ってるか乗ってないかの判定
-const int ONSET_THERESHOLD = 200;  //閾値の暫定値
+const int ONSET_THRESHOLD = 200;  //閾値の暫定値
 
 // 重さによるピッチ変化の閾値
 // 軽い : raw < LIGHT_THRESHOLD  → pitch +12（高い音）
@@ -21,7 +21,7 @@ uint8_t pressure_read() {
   int raw_value = analogRead(PRESSURE_SENSOR_PIN);
   uint8_t frog_state = 0;
   
-  if(raw_value > ONSET_THERESHOLD){
+  if(raw_value > ONSET_THRESHOLD){
     frog_state = 1;
   } else {
     frog_state = 0;
