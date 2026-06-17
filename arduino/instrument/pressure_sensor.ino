@@ -10,6 +10,7 @@ const int ONSET_THRESHOLD = 200;  //閾値の暫定値
 // 普通 : LIGHT_THRESHOLD <= raw < HEAVY_THRESHOLD → pitch ±0
 // 重い : raw >= HEAVY_THRESHOLD → pitch -12（低い音）
 const int LIGHT_THRESHOLD = 400;   // 要調整
+
 const int HEAVY_THRESHOLD = 700;   // 要調整
 
 void pressure_init() {

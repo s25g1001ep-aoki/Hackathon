@@ -12,7 +12,7 @@ struct NoteEvent {
 };
 
 const uint8_t TOTAL_PARTS = 4;
-const uint16_t LOOP_MAX_TICK = 64;
+const uint16_t LOOP_MAX_TICK = 512;
 
 
 //楽譜作る必要あり．
