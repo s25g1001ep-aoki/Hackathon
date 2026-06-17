@@ -67,6 +67,10 @@ void serial_tx_note_off(uint8_t pitch) {
   serial_tx_frame(FRAME_TYPE_OFF, payload, 1);
 }
 
+void init_serial_tx() {
+  Serial.begin(115200);
+}
+
 // =============================================================================
 // 単体動作確認用スケッチ（このファイル単体で動かすとき用）
 //
@@ -79,7 +83,7 @@ void serial_tx_note_off(uint8_t pitch) {
 //   結合後に必要なのは Serial.begin(115200); と serial_tx_note_on/off の呼び出しだけ。
 //   楽譜の進行は本実装では青木くんの score_player（SYNC tick 駆動）が担当する。
 // =============================================================================
-#define SERIAL_TX_STANDALONE_TEST 1
+#define SERIAL_TX_STANDALONE_TEST 0
 
 #if SERIAL_TX_STANDALONE_TEST
 
