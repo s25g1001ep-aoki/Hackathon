@@ -2,9 +2,7 @@
 #include "score_data.h"
 #include <avr/pgmspace.h>
 
-#define DRUM_KICK  36
-#define DRUM_SNARE 38
-#define DRUM_HH    42
+
 
 
 const uint8_t score_lengths[4] = {29, 29, 29, 20};

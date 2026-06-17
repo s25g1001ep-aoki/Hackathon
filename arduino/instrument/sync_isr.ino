@@ -17,6 +17,6 @@ void sync_init() {
 void on_sync_tick() {
     if (is_playing) {
         local_tick++;
-        score_player_on_tick(local_tick);
+        //score_player_on_tick(local_tick);
     }
 }

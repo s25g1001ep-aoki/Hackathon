@@ -14,6 +14,9 @@ struct NoteEvent {
 const uint8_t TOTAL_PARTS = 4;
 const uint16_t LOOP_MAX_TICK = 512;
 
+#define DRUM_KICK  36
+#define DRUM_SNARE 38
+#define DRUM_HH    42
 
 //楽譜作る必要あり．
 // 1拍＝2ティック、全64ティックの「カエルの歌」

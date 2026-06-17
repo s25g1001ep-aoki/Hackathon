@@ -2,14 +2,17 @@
 #include "score_data.h"
 #include "SPI.h"
 
-// 【配線】UNO R4 ハードウェアSPIスレーブ
-// SS=10, MOSI=11, MISO=12, SCK=13 (固定ピン、ソフトウェア指定不可)
-const int SLAVE_CS_PIN = 10;
+// 【配線】
+// マスター側のCS(SS)ピンを、UNO R4（スレーブ）の SLAVE_CS_PIN に接続。
+// MOSI/MISO/SCKは下記ピンに接続する（ソフトウェアエミュレーションのため自由に選べる）。
+const int SLAVE_CS_PIN   = 10;
 const int SLAVE_MOSI_PIN = 11;
+const int SLAVE_MISO_PIN = 12;
+const int SLAVE_SCK_PIN  = 13;
 
 // SPI規格: 1Mbps, MSBFIRST, MODE0 (server.ino の SPI_CONFIG と同一仕様)
-// ※スレーブ動作はハードウェア側のSCK/CPOL/CPHAに追従するため
-//   SPISettingsは使わないが、仕様としてここに明記する。
+// MODE0 = CPOL0,CPHA0 → SCKがLOW→HIGHに上がる瞬間にデータを確定して読む(サンプリング)。
+// このソフトウェアエミュレーションは MODE0 を前提に実装している。
 const unsigned long SPI_CLOCK_HZ = 1000000;
 const uint8_t SPI_BIT_ORDER = MSBFIRST;
 const uint8_t SPI_MODE = SPI_MODE0;
@@ -46,16 +49,14 @@ extern uint8_t frog_state;
 extern void score_init(uint8_t instrument_id);
 extern void score_stop_all();
 extern uint8_t get_instrument_id();
-extern void score_player_on_tick(uint16_t tick);
+//extern void score_player_on_tick(uint16_t tick);
 
 volatile uint8_t spi_rx_buffer[sizeof(ControlCommand)];
 volatile uint8_t spi_tx_buffer[sizeof(InstrumentStatus)];
-volatile uint8_t spi_byte_index = 0;
 volatile uint8_t ack_status = 0x01;
 volatile uint8_t last_received_sequence = 0;
 
 // 受信した5バイト(ControlCommand)を検証し、コマンドを実行する。
-// SPI割り込みの外（loop内など）で呼んでも良いように、ISR本体は最小限にする。
 void process_received_command() {
     ControlCommand cmd;
     memcpy(&cmd, (const void*)spi_rx_buffer, sizeof(ControlCommand));
@@ -104,8 +105,8 @@ void prepare_tx_buffer() {
     status.instrument_id = get_instrument_id();
     status.frog_state    = frog_state;
     status.sequence_ack  = last_received_sequence;
-    status.ack_ok         = ack_status;
-    status.checksum       = 0;
+    status.ack_ok        = ack_status;
+    status.checksum      = 0;
 
     uint8_t* raw = (uint8_t*)&status;
     uint8_t sum = 0;
@@ -115,50 +116,61 @@ void prepare_tx_buffer() {
     memcpy((void*)spi_tx_buffer, &status, sizeof(InstrumentStatus));
 }
 
-// SPIハードウェア受信完了割り込み: 1バイト受信されるたびに呼ばれる。
-// この中では重い処理をしない（次の送信バイトのセットのみを最優先で行う）。
-ISR(SPI_STC_vect) {
-    uint8_t rx = SPDR; // 受信バイトを読む(これがMISOラインを次バイト用に解放する)
+// MOSIから1ビット読みつつ、同じタイミングでMISOに1ビット出す(全二重)。
+// MODE0: SCK LOW→HIGH の立ち上がりでサンプリング、HIGH→LOW の立ち下がりで次ビット準備。
+uint8_t spi_transfer_byte_slave(uint8_t tx_byte) {
+    uint8_t rx_byte = 0;
 
-    if (spi_byte_index < sizeof(ControlCommand)) {
-        spi_rx_buffer[spi_byte_index] = rx;
+    // 最初のビットはSCKが上がる前にMISOへ出しておく(MSBFIRST)
+    digitalWrite(SLAVE_MISO_PIN, (tx_byte & 0x80) ? HIGH : LOW);
+
+    for (int i = 0; i < 8; i++) {
+        while (digitalRead(SLAVE_SCK_PIN) == LOW);  // SCK立ち上がりを待つ
+        rx_byte |= (digitalRead(SLAVE_MOSI_PIN) << (7 - i)); // この瞬間にMOSIを確定
+
+        // 次に出すビットを、SCKが下がる前に準備しておく
+        if (i < 7) {
+            digitalWrite(SLAVE_MISO_PIN, (tx_byte & (0x40 >> i)) ? HIGH : LOW);
+        }
+
+        while (digitalRead(SLAVE_SCK_PIN) == HIGH); // SCK立ち下がりを待つ
     }
 
-    spi_byte_index++;
-
-    // 次に送るバイトを即座にSPDRへセットする
-    if (spi_byte_index < sizeof(InstrumentStatus)) {
-        SPDR = spi_tx_buffer[spi_byte_index];
-    }
-
-    // ControlCommand(5バイト)を受信し終えたらコマンド処理＋送信バッファ更新
-    if (spi_byte_index >= sizeof(ControlCommand)) {
-        process_received_command();
-        prepare_tx_buffer();
-    }
+    return rx_byte;
 }
 
-// マスターがCSをLOWにした瞬間（通信開始）にバイトインデックスをリセットし、
-// 先頭バイト(instrument_id)を送信レジスタに事前セットする。
-void on_ss_falling() {
-    spi_byte_index = 0;
-    SPDR = spi_tx_buffer[0];
+// マスターが通信を開始した瞬間（CSがLOWになった時）に発動する割り込み。
+// ControlCommand(5バイト)を受信しつつ、同時にInstrumentStatus(5バイト)を返す。
+void on_cs_falling() {
+    uint8_t tx_len = sizeof(InstrumentStatus);
+    uint8_t rx_len = sizeof(ControlCommand);
+    uint8_t max_len = (tx_len > rx_len) ? tx_len : rx_len;
+
+    for (uint8_t i = 0; i < max_len; i++) {
+        uint8_t tx_byte = (i < tx_len) ? spi_tx_buffer[i] : 0x00;
+        uint8_t rx_byte = spi_transfer_byte_slave(tx_byte);
+        if (i < rx_len) {
+            spi_rx_buffer[i] = rx_byte;
+        }
+    }
+
+    process_received_command();
+    prepare_tx_buffer();
 }
 
 void spi_setup() {
     pinMode(SLAVE_MOSI_PIN, INPUT);
-    pinMode(MISO, OUTPUT);  // スレーブはMISOのみ出力
-    SPCR |= _BV(SPE);       // ハードウェアSPIスレーブモード有効化
-    SPI.attachInterrupt();  // SPI_STC_vect 割り込みを有効化
+    pinMode(SLAVE_MISO_PIN, OUTPUT);
+    pinMode(SLAVE_SCK_PIN, INPUT);
+    digitalWrite(SLAVE_MISO_PIN, LOW);
 }
 
 void init_spi_slave() {
     pinMode(SLAVE_CS_PIN, INPUT_PULLUP);
 
-    prepare_tx_buffer();
     spi_setup();
-    SPDR = spi_tx_buffer[0]; // 最初の送信バイトを事前セット
+    prepare_tx_buffer();
 
-    // CSピン(SS)がLOWになった瞬間にバイトインデックスをリセット
-    attachInterrupt(digitalPinToInterrupt(SLAVE_CS_PIN), on_ss_falling, FALLING);
+    // CSピンがLOW（通信開始）になった瞬間に割り込み関数を起動する
+    attachInterrupt(digitalPinToInterrupt(SLAVE_CS_PIN), on_cs_falling, FALLING);
 }
