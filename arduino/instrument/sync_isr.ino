@@ -1,7 +1,7 @@
 // sync_isr.ino
 #include "score_data.h"
 
-const int SYNC_PIN = 9;
+const int SYNC_PIN = 2;
 
 extern volatile bool is_playing;
 extern volatile uint16_t local_tick;
