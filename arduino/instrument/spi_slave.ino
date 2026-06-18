@@ -26,6 +26,16 @@ enum CommandType : uint8_t {
     CMD_BPM_UPDATE  = 0x04
 };
 
+// server.ino の wait_ack() ハンドシェイクと対応する値
+// (server.ino: CMD_CONNECT=100, DUMMY=0x00, ACK_OK=200)
+const uint8_t CMD_CONNECT = 100;
+const uint8_t ACK_OK      = 200;
+
+// SCKエッジ待ちのタイムアウト(マイクロ秒)。
+// 1Mbpsなら半周期は0.5us程度だが、ジッタや通信終了時のクロック停止に耐えられるよう
+// 十分大きく取っておく。この時間を超えてSCKが動かなければ「もう送られてこない」と判断する。
+const unsigned long SCK_EDGE_TIMEOUT_US = 5000UL;
+
 // server.ino の ControlCommand と完全一致させる (5バイト, packed)
 struct __attribute__((packed)) ControlCommand {
     uint8_t  command_type;
@@ -49,7 +59,6 @@ extern uint8_t frog_state;
 extern void score_init(uint8_t instrument_id);
 extern void score_stop_all();
 extern uint8_t get_instrument_id();
-//extern void score_player_on_tick(uint16_t tick);
 
 volatile uint8_t spi_rx_buffer[sizeof(ControlCommand)];
 volatile uint8_t spi_tx_buffer[sizeof(InstrumentStatus)];
@@ -118,14 +127,20 @@ void prepare_tx_buffer() {
 
 // MOSIから1ビット読みつつ、同じタイミングでMISOに1ビット出す(全二重)。
 // MODE0: SCK LOW→HIGH の立ち上がりでサンプリング、HIGH→LOW の立ち下がりで次ビット準備。
-uint8_t spi_transfer_byte_slave(uint8_t tx_byte) {
+// タイムアウトまたはCSがHIGHに戻った(通信終了)場合はfalseを返し、byte_outは未確定のまま戻る。
+bool spi_transfer_byte_slave(uint8_t tx_byte, uint8_t* byte_out) {
     uint8_t rx_byte = 0;
 
     // 最初のビットはSCKが上がる前にMISOへ出しておく(MSBFIRST)
     digitalWrite(SLAVE_MISO_PIN, (tx_byte & 0x80) ? HIGH : LOW);
 
     for (int i = 0; i < 8; i++) {
-        while (digitalRead(SLAVE_SCK_PIN) == LOW);  // SCK立ち上がりを待つ
+        unsigned long wait_start = micros();
+        while (digitalRead(SLAVE_SCK_PIN) == LOW) {
+            // CSがHIGHに戻った = マスターが通信を終えた(ハンドシェイクの2バイトのみ等)
+            if (digitalRead(SLAVE_CS_PIN) == HIGH) return false;
+            if (micros() - wait_start > SCK_EDGE_TIMEOUT_US) return false;
+        }
         rx_byte |= (digitalRead(SLAVE_MOSI_PIN) << (7 - i)); // この瞬間にMOSIを確定
 
         // 次に出すビットを、SCKが下がる前に準備しておく
@@ -133,22 +148,51 @@ uint8_t spi_transfer_byte_slave(uint8_t tx_byte) {
             digitalWrite(SLAVE_MISO_PIN, (tx_byte & (0x40 >> i)) ? HIGH : LOW);
         }
 
-        while (digitalRead(SLAVE_SCK_PIN) == HIGH); // SCK立ち下がりを待つ
+        wait_start = micros();
+        while (digitalRead(SLAVE_SCK_PIN) == HIGH) {
+            if (digitalRead(SLAVE_CS_PIN) == HIGH) return false;
+            if (micros() - wait_start > SCK_EDGE_TIMEOUT_US) return false;
+        }
     }
 
-    return rx_byte;
+    *byte_out = rx_byte;
+    return true;
 }
 
 // マスターが通信を開始した瞬間（CSがLOWになった時）に発動する割り込み。
-// ControlCommand(5バイト)を受信しつつ、同時にInstrumentStatus(5バイト)を返す。
+// 1バイト目を読んでから、それが CMD_CONNECT(起動時ハンドシェイク)か
+// 通常の ControlCommand(5バイト本通信) かを判定して処理を分岐する。
 void on_cs_falling() {
+    uint8_t first_byte = 0;
+
+    // 1バイト目はまだ何を送ってよいか分からないので、ダミー(0x00)を返しながら受信する
+    if (!spi_transfer_byte_slave(0x00, &first_byte)) {
+        return; // 1バイトも来ないまま終了(ノイズ等)
+    }
+
+    if (first_byte == CMD_CONNECT) {
+        // 【ハンドシェイク経路】wait_ack(): CMD_CONNECT → DUMMY の2バイトのみ。
+        // 2バイト目の応答として ACK_OK を返す。
+        uint8_t dummy_byte = 0;
+        spi_transfer_byte_slave(ACK_OK, &dummy_byte);
+        // DUMMYの内容は使わないので無視する。タイムアウトしてもここでは何もしない。
+        return;
+    }
+
+    // 【通常経路】ControlCommand(5バイト)として扱う。
+    // 1バイト目はもう受信済みなので、まずrxバッファに格納する。
+    spi_rx_buffer[0] = first_byte;
+
     uint8_t tx_len = sizeof(InstrumentStatus);
     uint8_t rx_len = sizeof(ControlCommand);
     uint8_t max_len = (tx_len > rx_len) ? tx_len : rx_len;
 
-    for (uint8_t i = 0; i < max_len; i++) {
+    for (uint8_t i = 1; i < max_len; i++) {
         uint8_t tx_byte = (i < tx_len) ? spi_tx_buffer[i] : 0x00;
-        uint8_t rx_byte = spi_transfer_byte_slave(tx_byte);
+        uint8_t rx_byte = 0;
+        if (!spi_transfer_byte_slave(tx_byte, &rx_byte)) {
+            return; // マスターが途中で通信を終えた(想定外の短い通信)
+        }
         if (i < rx_len) {
             spi_rx_buffer[i] = rx_byte;
         }
