@@ -3,6 +3,7 @@
 // instrument_spi_fix_notes.md の指摘1・2・4を反映し、指摘3(ハードウェアSPI Slave化)は
 // 使用マイコン(Arduino UNO R4 WiFi / Renesas RA4M1)の制約上不可能なため対象外とする。
 #include "score_data.h"
+#include "SPI.h"
 
 // ============================================================================
 // 【マイコン制約に関する注記】
