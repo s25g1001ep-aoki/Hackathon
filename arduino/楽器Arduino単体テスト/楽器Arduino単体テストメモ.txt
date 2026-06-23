@@ -1,0 +1,149 @@
+pressure_read テストケース3/3通過
+
+
+pressure_get_pitch_pffset　テストケース6/6通過
+
+
+
+
+eeprom_read_instrument_id　テスト
+10:21:21.764 -> --- START: eeprom_read_instrument_id Test ---
+10:21:21.863 -> EEPROM Value: 0 | Expected: 0x0 | Result: 0x0 -> [PASS]
+10:21:21.963 -> EEPROM Value: 3 | Expected: 0x3 | Result: 0x3 -> [PASS]
+10:21:22.095 -> EEPROM Value: 4 | Expected: 0xFF | Result: 0xFF -> [PASS]
+10:21:22.259 -> EEPROM Value: 255 | Expected: 0xFF | Result: 0xFF -> [PASS]
+10:21:22.259 -> Result: 4/4 Passed.
+10:21:22.259 -> --- END: eeprom_read_instrument_id Test ---
+10:21:22.259 -> 
+
+
+10:42:38.237 -> --- START: serial_tx Checksum Test ---
+10:42:38.237 -> NOTE_ON(60,100) Packet: 0xAA 0x90 0x2 0x3C 0x64 0xCA | XOR Sum (excl. 0xAA): 0 -> [PASS]
+10:42:38.336 -> NOTE_OFF(60) Packet:    0xAA 0x80 0x1 0x3C 0xBD | XOR Sum (excl. 0xAA): 0 -> [PASS]
+10:42:38.336 -> --- END: serial_tx Checksum Test ---
+10:42:38.368 -> 
+
+
+
+
+11:48:21.583 -> --- START: Score Step ID=0 Test ---
+11:48:21.583 -> Tick 0 -> [NOTE_ON]  Pitch: 60, Vel: 100
+11:48:21.583 -> Tick 16 -> [NOTE_OFF] Pitch: 60
+11:48:21.583 -> Tick 16 -> [NOTE_ON]  Pitch: 62, Vel: 100
+11:48:21.713 -> Tick 32 -> [NOTE_OFF] Pitch: 62
+11:48:21.713 -> Tick 32 -> [NOTE_ON]  Pitch: 64, Vel: 100
+11:48:21.713 -> Tick 48 -> [NOTE_OFF] Pitch: 64
+11:48:21.845 -> Tick 48 -> [NOTE_ON]  Pitch: 65, Vel: 100
+11:48:21.845 -> Tick 64 -> [NOTE_OFF] Pitch: 65
+11:48:21.845 -> Tick 64 -> [NOTE_ON]  Pitch: 64, Vel: 100
+11:48:21.977 -> Tick 80 -> [NOTE_OFF] Pitch: 64
+11:48:21.977 -> Tick 384 -> [NOTE_ON]  Pitch: 60, Vel: 100
+11:48:21.977 -> Tick 392 -> [NOTE_OFF] Pitch: 60
+11:48:22.010 -> --- END: Score Step ID=0 Test ---
+
+
+
+12:07:50.462 -> --- START: Score Step ID=3 Bug Detect Test (Fixed) ---
+12:07:50.462 -> Result: [FAIL] 4小節目のキックが出ない(バグ検出)
+12:07:50.528 -> --- END: Score Step ID=3 Bug Detect Test (Fixed) ---
+
+
+
+12:12:12.080 -> --- START: Pitch Shift Bug Detect Test ---
+12:12:12.080 -> Input Base Pitch: 60 | Offset: +12
+12:12:12.080 -> Expected Pitch: 72   | Actual Output: 60
+12:12:12.178 -> Result: [FAIL] ピッチが変わっていない(バグ検出)
+12:12:12.178 -> --- END: Pitch Shift Bug Detect Test ---
+
+ピッチが変わっていない理由は，serial_tx_note_onで，引数に shifted_pitch ではなく、元の pitch を渡しているから．ここは要修正．
+
+
+
+
+
+テスト8: PLAY / STOP コマンドの状態遷移テスト
+CMD_PLAY を受信した時に is_playing が true になること、また CMD_STOP を受信した時に is_playing が false になり、同時に発音中の音がすべて消音（NOTE_OFF が送信）されるかを検証する。
+
+12:21:41.128 -> --- START: PLAY / STOP Command Test ---
+12:21:41.128 -> PLAY Test: is_playing = true -> [PASS]
+12:21:41.128 -> STOP Test: is_playing = false -> [PASS]
+12:21:41.226 -> Stop All Test: note_off_count = 2 -> [PASS]
+12:21:41.226 -> Result: 3/3 Passed.
+12:21:41.226 -> --- END: PLAY / STOP Command Test ---
+12:21:41.226 -> 
+
+
+
+テスト9: ENTRY_CUE コマンドのテスト
+曲の途中でキュー（頭出しコマンド）を受信した際，local_tick が即座に 0 にリセットされ，譜面演奏データのアクティブフラグが初期化されることで，先頭から演奏がやり直せる状態になるかを検証する．
+
+
+12:23:57.478 -> --- START: ENTRY_CUE Command Test ---
+12:23:57.478 -> local_tick reset: 0 -> [PASS]
+12:23:57.478 -> is_playing state: true -> [PASS]
+12:23:57.478 -> note_active cleared: true -> [PASS]
+12:23:57.575 -> Result: 3/3 Passed.
+12:23:57.575 -> --- END: ENTRY_CUE Command Test ---
+12:23:57.575 -> 
+
+
+
+
+テスト10: on_sync_tick 割り込み動作テスト
+このテストは，Arduino実機の デジタル2番ピン（SYNC_PIN）に発生したパルス割り込み によって，実際に local_tick が進むかを検証する．
+is_playing = false の間はパルスが入っても tick が増えず，true になった後はパルスに応じて正確にインクリメントされるかという，不変・条件変化を検証する．
+
+12:33:39.383 -> --- START: on_sync_tick ISR Test ---
+12:33:39.383 -> 注意: テストを実行するには [D2ピン] と [D3ピン] をジャンパ線で接続してください。
+12:33:41.488 -> is_playing=false Test: local_tick = 10 -> [PASS]
+12:33:41.587 -> is_playing=true  Test: local_tick = 12 -> [PASS]
+12:33:41.587 -> Result: 2/2 Passed.
+12:33:41.587 -> --- END: on_sync_tick ISR Test ---
+12:33:41.587 -> 
+
+
+
+
+テスト11: NOTE_ON / NOTE_OFF ペア不変条件テスト
+0〜512tickまで進める1ループの間，発行された NOTE_ON の総数と NOTE_OFF の総数が完全に一致するか，また終了時に鳴りっぱなしの音（note_active が true のまま残るもの）がないかを自動検証する．
+
+
+12:56:46.456 -> --- START: NOTE_ON/OFF Pair Invariant Test ---
+12:56:46.456 -> Count Check: NOTE_ON=2, NOTE_OFF=2 -> [PASS]
+12:56:46.456 -> Stuck Note Check: No stuck notes -> [PASS]
+12:56:46.554 -> Result: 2/2 Passed.
+12:56:46.554 -> --- END: NOTE_ON/OFF Pair Invariant Test ---
+12:56:46.554 -> 
+
+
+
+
+テスト12: 二重 NOTE_ON 防止テスト（note_active フラグの効き検証）
+同一のtick内で score_step が予期せず複数回連続で呼ばれてしまった場合（メインループの回り方の影響など）でも，note_active フラグが防波堤となり，2回目以降の NOTE_ON 送出を正しくブロックできるかを検証する．
+
+
+
+13:01:09.626 -> --- START: Duplicate NOTE_ON Prevention Test ---
+13:01:09.626 -> Triggered score_step(10) 3 times. NOTE_ON count: 1 -> [PASS] (二重発火が正しく防止されました)
+13:01:09.692 -> --- END: Duplicate NOTE_ON Prevention Test ---
+13:01:09.692 -> 
+
+
+
+
+
+テスト13: tick飛び（処理遅延模擬）時の音符取りこぼし検証テスト
+他の処理が重く，メインループが毎tick（1ずつ）叩けず，0, 2, 4, 6... のように1つ飛ばしの「偶数tick」だけで score_step が呼ばれたケースを模擬する．
+現状のコードが持つ「完全一致（==）判定による取りこぼしリスク（バグ）」を炙り出すためのテスト．
+
+
+
+13:11:37.339 -> --- START: Tick-Skip Missed Note Test ---
+13:11:37.339 -> Simulating heavy loop delay: calling only EVEN ticks (0, 2, 4, ..., 32)
+13:11:37.339 -> Result: [FAIL] 奇数tickの音符を取りこぼしました。(等号判定バグの検出)
+13:11:37.470 -> --- END: Tick-Skip Missed Note Test ---
+13:11:37.503 -> 
+
+遅延発生時に音符を取りこぼすバグを検出した．
+
+
