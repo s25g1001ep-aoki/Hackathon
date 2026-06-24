@@ -48,7 +48,7 @@ const int SLAVE_SCK_PIN  = 13;
 // 【指摘3対応(可能な範囲)】ハードウェアSPI Slave化は本マイコンでは不可能なため、
 // クロックを落として安定性を確保する対応にとどめる。通信が不安定な場合は、
 // この値とサーバー側のSPI_CONFIGを一緒に下げて(例: 250000)動作確認すること。
-const unsigned long SPI_CLOCK_HZ = 1000000;
+const unsigned long SPI_CLOCK_HZ = 500000;
 const uint8_t SPI_BIT_ORDER = MSBFIRST;
 const uint8_t SPI_MODE = SPI_MODE0;
 
@@ -106,6 +106,18 @@ volatile uint8_t spi_tx_buffer[sizeof(InstrumentStatus)];
 // 3バイト目交換のタイミングでは今回のsequenceがまだ受信できていないため、
 // この「前回値」をsequence_ackとして返す。
 volatile uint8_t last_acked_sequence = 0;
+
+// ----------------------------------------------------------------------------
+// 【可視化用】受信したControlCommandの内容をSerialへ出力するためのログ情報。
+// 割り込みハンドラ(on_cs_falling)内ではSerial.print()を直接呼ばず、
+// ここに値を保存するだけにとどめ、実際の出力はloop()側で行う
+// (割り込み内でのSerial通信はバッファロック等の影響で不安定になりやすいため)。
+// ----------------------------------------------------------------------------
+volatile bool has_log_entry = false;
+volatile uint8_t log_command_type = 0;
+volatile uint16_t log_payload = 0;
+volatile uint8_t log_sequence = 0;
+volatile bool log_checksum_ok = false;
 
 // 【指摘4対応】SPI割り込み内では「どのコマンドが来たか」を記録するだけにし、
 // score_init/score_stop_allなどの重い処理は loop() 側の process_pending_command()
@@ -185,10 +197,17 @@ void finalize_tx_buffer_tail(const uint8_t* raw_rx) {
 
     spi_tx_buffer[3] = checksum_ok ? 0x01 : 0x00; // ack_ok: 今回コマンドの検証結果
 
-    if (checksum_ok) {
-        ControlCommand cmd;
-        memcpy(&cmd, raw_rx, sizeof(ControlCommand));
+    ControlCommand cmd;
+    memcpy(&cmd, raw_rx, sizeof(ControlCommand));
 
+    // 【可視化用】受信内容をログ用変数に記録する(Serial.printはloop()側で行う)
+    log_command_type = cmd.command_type;
+    log_payload = cmd.payload;
+    log_sequence = cmd.sequence;
+    log_checksum_ok = checksum_ok;
+    has_log_entry = true;
+
+    if (checksum_ok) {
         // 次回の通信でsequence_ackとして返すため記録する(今回は間に合わない)
         last_acked_sequence = cmd.sequence;
 
@@ -204,6 +223,46 @@ void finalize_tx_buffer_tail(const uint8_t* raw_rx) {
     uint8_t out_sum = 0;
     for (uint8_t i = 0; i < sizeof(InstrumentStatus) - 1; i++) out_sum += spi_tx_buffer[i];
     spi_tx_buffer[4] = (uint8_t)(0 - out_sum);
+}
+
+// ----------------------------------------------------------------------------
+// 【可視化用】SPIで受信したControlCommandの内容をSerialへ出力する。
+// loop()側から毎周期呼ばれる。割り込み(on_cs_falling)内では値の保存のみを
+// 行い、実際のSerial.print()はここ(通常コンテキスト)でまとめて行う
+// (割り込み内でのSerial出力はバッファロック等の影響で不安定になりやすいため避ける)。
+// ----------------------------------------------------------------------------
+void print_spi_log() {
+    if (!has_log_entry) return;
+
+    uint8_t command_type;
+    uint16_t payload;
+    uint8_t sequence;
+    bool checksum_ok;
+
+    noInterrupts();
+    command_type = log_command_type;
+    payload = log_payload;
+    sequence = log_sequence;
+    checksum_ok = log_checksum_ok;
+    has_log_entry = false;
+    interrupts();
+
+    Serial.print(F("[SPI RX] cmd="));
+    switch (command_type) {
+        case CMD_CONNECT:     Serial.print(F("CONNECT")); break;
+        case CMD_STATUS_POLL: Serial.print(F("STATUS_POLL")); break;
+        case CMD_PLAY:        Serial.print(F("PLAY")); break;
+        case CMD_STOP:        Serial.print(F("STOP")); break;
+        case CMD_ENTRY_CUE:   Serial.print(F("ENTRY_CUE")); break;
+        case CMD_BPM_UPDATE:  Serial.print(F("BPM_UPDATE")); break;
+        default:              Serial.print(command_type); break;
+    }
+    Serial.print(F(" payload="));
+    Serial.print(payload);
+    Serial.print(F(" seq="));
+    Serial.print(sequence);
+    Serial.print(F(" checksum="));
+    Serial.println(checksum_ok ? F("OK") : F("NG"));
 }
 
 // ----------------------------------------------------------------------------
@@ -289,6 +348,14 @@ void on_cs_falling() {
         uint8_t dummy_byte = 0;
         spi_transfer_byte_slave(ACK_OK, &dummy_byte);
         miso_drive_disable();
+
+        // 【可視化用】ハンドシェイク受信もログに残す(command_type=CMD_CONNECTとして記録)
+        log_command_type = CMD_CONNECT;
+        log_payload = 0;
+        log_sequence = 0;
+        log_checksum_ok = true; // ハンドシェイクにチェックサムは無いため常にtrue扱い
+        has_log_entry = true;
+
         return;
     }
 

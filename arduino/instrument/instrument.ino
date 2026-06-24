@@ -24,6 +24,9 @@ extern void score_stop_all();
 // 割り込みの外(loop側)で実際に実行するための関数。重い処理(score_init等)を
 // 割り込みハンドラから追い出すための仕組み(instrument_spi_fix_notes.md 指摘4対応)。
 extern void process_pending_command();
+// 【追加】SPIで受信したControlCommandの内容をSerialへ出力するための関数
+// (spi_slave.ino側で受信内容を記録し、ここでloop()コンテキストから出力する)。
+extern void print_spi_log();
 
 void setup() {
     init_serial_tx();
@@ -39,6 +42,9 @@ void loop() {
     // ここで実処理する。score_init/score_stop_allなど時間のかかる処理は
     // 割り込みハンドラ内では行わず、必ずこのloop()側で実行する。
     process_pending_command();
+
+    // 【追加】直前のSPI通信で受信したControlCommandの内容をSerialへ出力する。
+    print_spi_log();
 
     // 圧力センサからfrog_state（0 or 1）を更新
     frog_state = pressure_read();
