@@ -21,10 +21,16 @@ void instrument_id_init() {
     instrument_id = eeprom_read_instrument_id();
 
     if (instrument_id == 0xFF) {
-        digitalWrite(ERROR_LED_PIN, HIGH);
-        while (true) {
-            delay(1000);
+        Serial.println(F("[WARN] EEPROM ID is invalid. Automatically writing default ID=0..."));
+        EEPROM.write(EEPROM_ID_ADDR, 0); // EEPROMに0を書き込む
+        instrument_id = 0;              // プログラム上のIDも0にする
+        
+        // 念のためエラーLEDを短くパカパカと点滅させて、自動書き込みが走ったことを通知
+        for(int i=0; i<6; i++) {
+            digitalWrite(ERROR_LED_PIN, !digitalRead(ERROR_LED_PIN));
+            delay(100);
         }
+        digitalWrite(ERROR_LED_PIN, LOW);
     }
 }
 

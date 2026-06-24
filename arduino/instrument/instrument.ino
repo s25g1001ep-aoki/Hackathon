@@ -29,12 +29,19 @@ extern void process_pending_command();
 extern void print_spi_log();
 
 void setup() {
+    Serial.begin(115200);
     init_serial_tx();
     instrument_id_init();
     score_init(get_instrument_id());
     init_spi_slave();
     sync_init();
     pressure_init();
+
+    // 【追加】起動完了時に一度だけ表示する。担当パート(instrument_id)が
+    // 正しく読み出せているかをここで確認できる。
+    Serial.print(F("[BOOT] instrument ready. instrument_id="));
+    Serial.println(get_instrument_id());
+    Serial.println(F("[BOOT] waiting for server handshake..."));
 }
 
 void loop() {

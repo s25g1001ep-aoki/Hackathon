@@ -190,13 +190,13 @@ static void buttonUpdate() {
   lastButtonReading = reading;
 }
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-  delay(500);
-}
+//void setup() {
+//  Serial.begin(115200);
+//  pinMode(BUTTON_PIN, INPUT_PULLUP);
+//  pinMode(LED_PIN, OUTPUT);
+//  digitalWrite(LED_PIN, LOW);
+//  delay(500);
+//}
 
 void loop() {
   buttonUpdate();

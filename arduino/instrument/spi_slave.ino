@@ -247,9 +247,14 @@ void print_spi_log() {
     has_log_entry = false;
     interrupts();
 
+    if (command_type == CMD_CONNECT) {
+        // 【ハンドシェイク専用ログ】起動時のwait_ack()応答が来たことを明示する。
+        Serial.println(F("[HANDSHAKE] CMD_CONNECT received -> replied ACK_OK"));
+        return;
+    }
+
     Serial.print(F("[SPI RX] cmd="));
     switch (command_type) {
-        case CMD_CONNECT:     Serial.print(F("CONNECT")); break;
         case CMD_STATUS_POLL: Serial.print(F("STATUS_POLL")); break;
         case CMD_PLAY:        Serial.print(F("PLAY")); break;
         case CMD_STOP:        Serial.print(F("STOP")); break;
